@@ -16,7 +16,7 @@ from RPLCD import cursor, cleared
 from RPLCD import BacklightMode
 
 # defines
-PIN_GPIO  = 12	 # gpio on pin 12
+PIN_GPIO  = 40	 # gpio on pin 12
 DSPL_TIME = 5	 # seconds
 UI_TICKDL = 0.25 # seconds
 
@@ -30,11 +30,12 @@ try:
 except NameError:
     unichr = chr
 
-# get current time
+# get current time, and format it
 def _get_time():
 	act_time_str = time.strftime("%d.%b %H:%M:%S")
 	return act_time_str
 
+# get cpu temp from system file 
 def _get_cpu_temp():
     tempFile = open("/sys/class/thermal/thermal_zone0/temp")
     cpu_temp = tempFile.read()
@@ -88,27 +89,28 @@ def _get_ip():
 # init gpio
 GPIO.setmode(GPIO.BOARD)
 GPIO.setwarnings(False)
-GPIO.setup(PIN_GPIO, GPIO.IN, pull_up_down = GPIO.PUD_DOWN)
+GPIO.setup(PIN_GPIO, GPIO.IN, pull_up_down = GPIO.PUD_UP)
 
 # init LCD
 lcd = CharLCD(cols=16, rows=2)
-# create :) and :(
+# create custom chars :) and :(, block and °
 happy = (0b00000, 0b01010, 0b01010, 0b00000, 0b10001, 0b10001, 0b01110, 0b00000)
 sad   = (0b00000, 0b01010, 0b01010, 0b00000, 0b01110, 0b10001, 0b10001, 0b00000)
 block = (0b11111, 0b11111, 0b11111, 0b11111, 0b11111, 0b11111, 0b11111, 0b11111) 
-degr  = (0b01110, 0b01010, 0b01110, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000) # °
+degr  = (0b01110, 0b01010, 0b01110, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000) 
 lcd.create_char(0, sad)
 lcd.create_char(1, happy)
 lcd.create_char(2, block)
 lcd.create_char(3, degr)
 
+# endless loop
 while True:
 	count = 0
 	lcd.clear()
 	lcd.write_string(_get_time())
 	lcd.cursor_pos = (1, 0)
 	
-	# put smiley indicator if connected
+	# put smiley indicator if connected to the internet
 	if _is_connected() == True:
 		lcd.write_string(_get_ip())
 		lcd.cursor_pos = (1, 15)
@@ -118,16 +120,18 @@ while True:
 		lcd.cursor_pos = (1, 15)
 		lcd.write_string(unichr(0))
 
-	# if buttin is hold, count hold time #############
-	if(GPIO.input(PIN_GPIO) ==1):
+	# if button is hold, count hold time #############
+	if(GPIO.input(PIN_GPIO) == 0):
 		# clear lcd
 		lcd.clear()
 		lcd.cursor_pos = (0, 0)
 		lcd.write_string("  1  |  2  |  3 ")
+		lcd.cursor_pos = (1, 0)
+		lcd.write_string(" Wea | Sys | Ini")
 		lcd.cursor_pos = (0, 0)
 		
 		# as long as button is hold show indicators, if hold reaches 15 end loop
-		while (GPIO.input(PIN_GPIO) == 1):
+		while (GPIO.input(PIN_GPIO) == 0):
 			lcd.write_string(unichr(2))
 			count += 1
 			time.sleep(UI_TICKDL)
@@ -138,8 +142,7 @@ while True:
 				count = 0
 			pass
 
-	# if button was pressed unti segment 3, initiate reboot
-	# sleep, butto was not pressed this loop
+	########### evaluate button press #########################################
 	if 	 (count == 0):
 		time.sleep( DSPL_TIME )
 	elif (count <= 5):
@@ -153,7 +156,7 @@ while True:
 		lcd.write_string(_get_day_rain())
 		time.sleep(DSPL_TIME)
 	elif (count <= 11):
-		# cpu temp
+		# show cpu temp and free disk space
 		lcd.clear()
 		lcd.cursor_pos = (0, 0)
 		lcd.write_string("CPU temp: " + _get_cpu_temp())
@@ -164,7 +167,7 @@ while True:
 		time.sleep(DSPL_TIME)
 		# disk free space
 	elif (count <= 16):
-		# close lcd connection
+		# set reboot indicator file, a cron job will catch this and reboot the pi
 		lcd.clear()
 		lcd.cursor_pos = (0, 0)
 		lcd.write_string("Rebooting")
@@ -175,10 +178,10 @@ while True:
 			print("create reboot file failed!")
 		break
 	
-	# end button #############################
+	###########  end evaluate button press ####################################
 
+#close lcd
 lcd.close()
-
 # close gpio
 GPIO.cleanup()
 
